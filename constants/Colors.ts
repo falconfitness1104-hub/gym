@@ -1,19 +1,24 @@
-const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
+const tintColorLight = '#FFD700'; // Brilliant Gold
+const tintColorDark = '#FFB800';  // Deep Shiny Gold
 
 export default {
   light: {
-    text: '#000',
-    background: '#fff',
+    text: '#1C1C1C',
+    background: '#F8F9FA',
     tint: tintColorLight,
-    tabIconDefault: '#ccc',
+    tabIconDefault: '#999',
     tabIconSelected: tintColorLight,
+    card: '#FFFFFF',
+    border: '#E5E5E5',
   },
   dark: {
-    text: '#fff',
-    background: '#000',
+    text: '#FFFFFF',
+    background: '#050505',
     tint: tintColorDark,
-    tabIconDefault: '#ccc',
+    tabIconDefault: '#334155',
     tabIconSelected: tintColorDark,
+    card: '#121212',
+    border: '#FFB800', // Shiny Gold
+    accent: '#1E1E1E',
   },
 };
