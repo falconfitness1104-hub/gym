@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, ScrollView, Platform } from 'react-native';
+import { StyleSheet, ScrollView, Platform, RefreshControl } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { syncHealthData } from '@/lib/health';
 import { View } from '@/components/Themed';
 import { Card, Button, ListItem, Icon, Text } from '@rneui/themed';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,13 +10,48 @@ import { LinearGradient } from 'expo-linear-gradient';
 export default function TabOneScreen() {
   const [session, setSession] = useState<Session | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchNotifications(session.user.id);
+      if (session) {
+        fetchNotifications(session.user.id);
+        fetchMetrics(session.user.id);
+        handleSync(session.user.id);
+      }
     });
   }, []);
+
+  const onRefresh = async () => {
+    if (session) {
+      setRefreshing(true);
+      await handleSync(session.user.id);
+      setRefreshing(false);
+    }
+  };
+
+  const handleSync = async (userId: string) => {
+    try {
+      await syncHealthData(userId);
+      await fetchMetrics(userId);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchMetrics = async (userId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const { data } = await supabase
+      .from('health_metrics')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('date', today)
+      .maybeSingle();
+    
+    if (data) setMetrics(data);
+  };
 
   const fetchNotifications = async (userId: string) => {
     const { data } = await supabase
@@ -26,9 +62,10 @@ export default function TabOneScreen() {
     setNotifications(data || []);
   };
 
-  const ShinyButton = ({ title, icon, secondary }: { title: string, icon: any, secondary?: boolean }) => (
+  const ShinyButton = ({ title, icon, secondary, onPress }: { title: string, icon: any, secondary?: boolean, onPress?: () => void }) => (
     <Button 
       title={title} 
+      onPress={onPress}
       ViewComponent={!secondary ? LinearGradient : View}
       linearGradientProps={!secondary ? {
         colors: ['#FFE66D', '#FFB800', '#D4AF37'],
@@ -42,7 +79,13 @@ export default function TabOneScreen() {
   );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={styles.contentContainer}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFB800" />
+      }
+    >
       <View style={styles.header}>
         <Text h2 style={styles.welcome}>FALCON</Text>
         <Text style={styles.subtitle}>PREMIUM PERFORMANCE TRACKING</Text>
@@ -67,12 +110,12 @@ export default function TabOneScreen() {
 
       <View style={styles.statsContainer}>
         <Card containerStyle={[styles.statCard, { flex: 1 }]}>
-          <Text style={styles.statLabel}>KCAL</Text>
-          <Text style={styles.statValue}>1,250</Text>
+          <Text style={styles.statLabel}>STEPS</Text>
+          <Text style={styles.statValue}>{metrics?.steps?.toLocaleString() || '0'}</Text>
         </Card>
         <Card containerStyle={[styles.statCard, { flex: 1 }]}>
-          <Text style={styles.statLabel}>PROTEIN</Text>
-          <Text style={styles.statValue}>85g</Text>
+          <Text style={styles.statLabel}>KCAL</Text>
+          <Text style={styles.statValue}>{metrics?.calories_burned?.toLocaleString() || '0'}</Text>
         </Card>
       </View>
 
@@ -83,9 +126,10 @@ export default function TabOneScreen() {
           icon={<Icon name="camera" type="font-awesome" color="black" size={18} style={{ marginRight: 10 }} />}
         />
         <ShinyButton 
-          title="BOOK SESSION" 
+          title="SYNC HEALTH" 
           secondary
-          icon={<Icon name="calendar" type="font-awesome" color="#FFB800" size={18} style={{ marginRight: 10 }} />}
+          onPress={() => session && handleSync(session.user.id)}
+          icon={<Icon name="refresh" type="font-awesome" color="#FFB800" size={18} style={{ marginRight: 10 }} />}
         />
       </Card>
 
