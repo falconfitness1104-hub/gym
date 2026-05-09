@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import HealthKit, { HKQuantityTypeIdentifier, HKStatisticsOptions } from '@kingstinct/react-native-healthkit';
+import { initialize, requestPermission, readRecords } from 'react-native-health-connect';
 import { supabase } from './supabase';
 
 export const syncHealthData = async (userId: string) => {
@@ -9,11 +10,63 @@ export const syncHealthData = async (userId: string) => {
     if (Platform.OS === 'ios') {
       await syncAppleHealth(userId);
     } else if (Platform.OS === 'android') {
-      // Android Health Connect implementation would go here
-      // For now we focus on the structure
+      await syncAndroidHealth(userId);
     }
   } catch (error) {
     console.error('Health sync failed:', error);
+  }
+};
+
+const syncAndroidHealth = async (userId: string) => {
+  try {
+    const isInitialized = await initialize();
+    if (!isInitialized) return;
+
+    // Request Permissions
+    await requestPermission([
+      { accessType: 'read', recordType: 'Steps' },
+      { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
+    ]);
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Fetch Steps
+    const stepsRecords = await readRecords('Steps', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: startOfDay.toISOString(),
+        endTime: now.toISOString(),
+      },
+    });
+
+    // Fetch Calories
+    const caloriesRecords = await readRecords('ActiveCaloriesBurned', {
+      timeRangeFilter: {
+        operator: 'between',
+        startTime: startOfDay.toISOString(),
+        endTime: now.toISOString(),
+      },
+    });
+
+    const totalSteps = stepsRecords.records.reduce((sum, r) => sum + (r.count || 0), 0);
+    const totalCalories = caloriesRecords.records.reduce((sum, r) => sum + (r.energy?.inKilocalories || 0), 0);
+
+    // Sync to Supabase
+    const { error } = await supabase.from('health_metrics').upsert({
+      user_id: userId,
+      date: startOfDay.toISOString().split('T')[0],
+      steps: Math.round(totalSteps),
+      calories_burned: Math.round(totalCalories),
+      source: 'google_health',
+      updated_at: new Date(),
+    }, {
+      onConflict: 'user_id,date'
+    });
+
+    if (error) throw error;
+  } catch (e) {
+    console.error('Android Health Sync Error:', e);
   }
 };
 
